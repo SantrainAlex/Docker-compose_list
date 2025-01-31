@@ -1,0 +1,101 @@
+services:
+  frontend:
+    image: alexis62/user-management-frontend:latest
+    ports:
+      - "8090:80"
+    depends_on:
+      backend:
+        condition: service_started
+    networks:
+      - app-network
+    environment:
+      - API_URL=http://backend:3000
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  backend:
+    image: alexis62/user-management-backend:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - DB_HOST=mariadb
+      - DB_USER=user
+      - DB_PASSWORD=password
+      - DB_NAME=user_management
+      - DB_PORT=3306
+      - PORT=3000
+      - CORS_ORIGIN=http://localhost:8090
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  mariadb:
+    image: mariadb:10.6
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=user_management
+      - MYSQL_USER=user
+      - MYSQL_PASSWORD=password
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/1-init.sql
+      - ./db/load-data.sh:/docker-entrypoint-initdb.d/2-load-data.sh
+      - mariadb_data:/var/lib/mysql
+      - mariadb_config:/etc/mysql/conf.d
+      - mariadb_backup:/backup
+    ports:
+      - "3306:3306"
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "user", "--password=password"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    command: >
+      --character-set-server=utf8mb4 
+      --collation-server=utf8mb4_unicode_ci 
+      --max_connections=1000 
+      --default-authentication-plugin=mysql_native_password
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  app-network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+    labels:
+      description: "Réseau pour l'application de gestion des utilisateurs"
+
+volumes:
+  mariadb_data:
+    name: user_management_db_data
+    labels:
+      description: "Données persistantes de MariaDB"
+  mariadb_config:
+    name: user_management_db_config
+    labels:
+      description: "Configuration personnalisée de MariaDB"
+  mariadb_backup:
+    name: user_management_db_backup
+    labels:
+      description: "Sauvegardes de la base de données"
